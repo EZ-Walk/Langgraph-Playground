@@ -3,6 +3,10 @@ import json
 
 from langchain_core.messages import ToolMessage
 
+import dotenv
+
+dotenv.load_dotenv()
+
 tool = TavilySearchResults(max_results=2)
 tools = [tool]
 # tool.invoke("What's a 'node' in LangGraph?")
