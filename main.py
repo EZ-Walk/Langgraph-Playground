@@ -13,6 +13,8 @@ from langgraph.graph import StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 
+from langgraph.checkpoint.memory import MemorySaver
+
 
 class State(TypedDict):
     messages: Annotated[list, add_messages]
@@ -43,10 +45,14 @@ graph_builder.add_conditional_edges(
 # Any time a tool is called, we return to the chatbot to decide the next step
 graph_builder.add_edge("tools", "chatbot")
 graph_builder.set_entry_point("chatbot")
-graph = graph_builder.compile()
+memory = MemorySaver()
+graph = graph_builder.compile(checkpointer=memory)
 
 def stream_graph_updates(user_input: str):
-    for event in graph.stream({"messages": [{"role": "user", "content": user_input}]}):
+    for event in graph.stream(
+        {"messages": [{"role": "user", "content": user_input}]},
+        config={"configurable": {"thread_id": "1"}}
+    ):
         for value in event.values():
             print("Assistant:", value["messages"][-1].content)
 
