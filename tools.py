@@ -3,13 +3,14 @@ import json
 
 from langchain_core.messages import ToolMessage
 
+from langgraph.prebuilt import ToolNode, tools_condition
+
 import dotenv
 
 dotenv.load_dotenv()
 
 tool = TavilySearchResults(max_results=2)
 tools = [tool]
-# tool.invoke("What's a 'node' in LangGraph?")
 
 class BasicToolNode:
     """A node that runs the tools requested in the last AI message."""
@@ -34,6 +35,5 @@ class BasicToolNode:
             
         return {"messages": outputs}
 
-tool_node = BasicToolNode(tools=tools)
-            
-            
+# tool_node = BasicToolNode(tools=tools)
+tool_node = ToolNode(tools=tools)
