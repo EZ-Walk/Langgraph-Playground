@@ -1,6 +1,7 @@
 
 import dotenv
 import json
+import os
 from flask import Flask, request, jsonify
 
 dotenv.load_dotenv()
@@ -16,6 +17,10 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.types import Command, interrupt
+
+from notion_client import Client
+
+from tools import fetch_comment_from_parent
 
 
 class State(TypedDict):
@@ -59,20 +64,73 @@ graph_builder.add_edge(START, "chatbot")
 memory = MemorySaver()
 graph = graph_builder.compile(checkpointer=memory)
 
-def stream_graph_updates(user_input: str):
+def stream_graph_updates(user_input: str, config: dict):
     for event in graph.stream(
         {"messages": [{"role": "user", "content": user_input}]},
-        config={"configurable": {"thread_id": "1"}},
-        
+        config=config,
+        stream_mode="values"
     ):
-        for value in event.values():
-            print("Assistant:", value["messages"][-1].content)
+        print(event)
+        notion_client.comments.create(
+            discussion_id=config['configurable']['thread_id'],
+            rich_text=[{
+                "type": "text",
+                "text": {
+                    "content": event["messages"][-1].content
+                }
+            }]
+        )
+            
+
+def handle_comment(payload: dict):
+    # Find the discussion ID of the comment that just came in.
+    comments = notion_client.comments.list(block_id=payload['data']['parent']['id'])
+    
+    this_comment = fetch_comment_from_parent(
+        comments=comments,
+        parent_id=payload['data']['parent']['id'],
+        comment_id=payload['entity']['id']
+    )
+    
+    discussion_id = this_comment['discussion_id']
+    
+    if payload['type'] == 'comment.created':
+        print(f"New comment: {this_comment}")
+        
+        response = graph.invoke(
+            {"messages": [
+                {"role": "user", "content": this_comment['rich_text'][0]['plain_text']}
+            ]},
+            config={"configurable": {"thread_id": discussion_id}}
+        )
+        
+        notion_client.comments.create(
+            discussion_id=discussion_id,
+            rich_text=[{
+                "type": "text",
+                "text": {
+                    "content": response["messages"][-1].content
+                }
+            }]
+        )
+    
+    elif payload['type'] == 'comment.deleted':
+        print(f"Comment deleted: {this_comment}")
+    
+    elif payload['type'] == 'comment.updated':
+        print(f"Comment updated: {this_comment}")
+        
+    return
+    
+    # Comment.created
+    # create a 
 
 # Initialize Flask app
 app = Flask(__name__)
 
 @app.route('/', methods=['GET'])
 def status():
+    # get the state history of the graph
     return jsonify({"status": "ok", "message": "LangGraph webhook server is running"})
 
 @app.route('/events', methods=['POST'])
@@ -80,13 +138,16 @@ def webhook_handler():
     try:
         payload = request.json
         print(f"Received webhook payload: {json.dumps(payload, indent=2)}")
+
+        if payload['type'].startswith('comment'):
+            if payload['authors'][0]['type'] == 'person':
+                handle_comment(payload)
+                return jsonify({"status": "success", "message": "Comment processed"}), 200
+            else:
+                return jsonify({"status": "success", "message": "Bot response posted"}), 200
+
         
-        # Here you can process the webhook payload and potentially use the LangGraph agent
-        # For example, if the payload contains a message, you could pass it to the agent:
-        # if 'message' in payload:
-        #     stream_graph_updates(payload['message'])
-        
-        return jsonify({"status": "success", "message": "Webhook received"})
+        return jsonify({"status": "success", "message": "Webhook received"}), 200
     except Exception as e:
         print(f"Error processing webhook: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -98,6 +159,7 @@ if __name__ == "__main__":
     # Check if we should run in server mode
     if len(sys.argv) > 1 and sys.argv[1] == "server":
         print("Starting Flask server...")
+        notion_client = Client(auth=os.getenv("NOTION_API_KEY"))
         app.run(host='0.0.0.0', port=5001, debug=True)
     else:
         # Original CLI mode

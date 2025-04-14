@@ -7,6 +7,8 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 import dotenv
 
+from typing import Optional
+
 dotenv.load_dotenv()
 
 tool = TavilySearchResults(max_results=2)
@@ -37,3 +39,30 @@ class BasicToolNode:
 
 # tool_node = BasicToolNode(tools=tools)
 tool_node = ToolNode(tools=tools)
+
+def fetch_comment_from_parent(comments: dict, parent_id: str, comment_id: Optional[str] = None):
+    """
+    Sort comments returned by the notion API by returning a list of ordered comments belonging to the block with the given parent_id.
+    Optionally, return only the comment requested by ID.
+    
+    Args:
+        comments (dict): Dictionary of comments retrieved from Notion
+        parent_id (str): ID of the parent block
+        comment_id (str, optional): ID of the specific comment to fetch
+        
+    Returns:
+        dict: Dictionary of comments or a specific comment if comment_id is provided
+    """
+ 
+    # catch no comments found by checking the length of the results field
+    if len(comments.get('results', [])) == 0:
+        return {}
+
+    # optionally, return only the comment requested by ID
+    if comment_id:
+        for this_c in comments.get('results'):
+            if this_c['id'] == comment_id:
+                return this_c
+
+    # Finally, return all comments
+    return comments.get('results', 'No comments found')
