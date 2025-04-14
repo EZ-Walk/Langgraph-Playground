@@ -1,5 +1,7 @@
 
 import dotenv
+import json
+from flask import Flask, request, jsonify
 
 dotenv.load_dotenv()
 from typing import Annotated
@@ -66,15 +68,47 @@ def stream_graph_updates(user_input: str):
         for value in event.values():
             print("Assistant:", value["messages"][-1].content)
 
-if __name__ == "__main__":
+# Initialize Flask app
+app = Flask(__name__)
 
-    while True:
-        try:
-            user_input = input("User: ")
-            if user_input.lower() in ["quit", "exit", "q"]:
-                print("Goodbye!")
+@app.route('/', methods=['GET'])
+def status():
+    return jsonify({"status": "ok", "message": "LangGraph webhook server is running"})
+
+@app.route('/events', methods=['POST'])
+def webhook_handler():
+    try:
+        payload = request.json
+        print(f"Received webhook payload: {json.dumps(payload, indent=2)}")
+        
+        # Here you can process the webhook payload and potentially use the LangGraph agent
+        # For example, if the payload contains a message, you could pass it to the agent:
+        # if 'message' in payload:
+        #     stream_graph_updates(payload['message'])
+        
+        return jsonify({"status": "success", "message": "Webhook received"})
+    except Exception as e:
+        print(f"Error processing webhook: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# Keep the original CLI functionality for testing
+if __name__ == "__main__":
+    import sys
+    
+    # Check if we should run in server mode
+    if len(sys.argv) > 1 and sys.argv[1] == "server":
+        print("Starting Flask server...")
+        app.run(host='0.0.0.0', port=5001, debug=True)
+    else:
+        # Original CLI mode
+        print("Running in CLI mode. Use 'python main.py server' to start the Flask server.")
+        while True:
+            try:
+                user_input = input("User: ")
+                if user_input.lower() in ["quit", "exit", "q"]:
+                    print("Goodbye!")
+                    break
+                stream_graph_updates(user_input)
+            except Exception as e:
+                print(f"Error: {str(e)}")
                 break
-            stream_graph_updates(user_input)
-        except Exception as e:
-            raise e
-            break
