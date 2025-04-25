@@ -1,4 +1,4 @@
-
+import asyncio
 import dotenv
 
 dotenv.load_dotenv()
@@ -15,6 +15,8 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.types import Command, interrupt
 
+from composio_langgraph import Action, ComposioToolSet, App
+
 
 class State(TypedDict):
     messages: Annotated[list, add_messages]
@@ -29,9 +31,18 @@ def human_assistance(query: str) -> str:
     human_response = interrupt({"query": query})
     return human_response["data"]
 
+# Traditional tool setup
+# tool = TavilySearchResults(max_results=2)
+# tools = [tool, human_assistance]
 
-tool = TavilySearchResults(max_results=2)
-tools = [tool, human_assistance]
+#Composio MCP tool setup
+composio_toolset = ComposioToolSet(entity_id='default')
+tools = composio_toolset.get_tools(apps=[App.TAVILY])
+tool_node = ToolNode(tools=tools)
+
+# custom MCP servers
+
+
 llm = ChatAnthropic(model="claude-3-5-sonnet-20240620")
 llm_with_tools = llm.bind_tools(tools)
 
@@ -43,8 +54,6 @@ def chatbot(state: State):
 
 
 graph_builder.add_node("chatbot", chatbot)
-
-tool_node = ToolNode(tools=tools)
 graph_builder.add_node("tools", tool_node)
 
 graph_builder.add_conditional_edges(
